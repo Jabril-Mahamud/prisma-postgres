@@ -12,15 +12,6 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
-
-model User {
-  id       String  @id @default(cuid())
-  name     String?
-  email    String  @unique
-  password String
-  posts    Post[]
-}
-
 model Post {
   id        Int      @id @default(autoincrement())
   createdAt DateTime @default(now())
@@ -30,4 +21,125 @@ model Post {
   published Boolean  @default(false)
   authorId  String?
   author    User?    @relation(fields: [authorId], references: [id])
+}
+
+// Add to schema.prisma
+model AyuutoGroup {
+  id                String           @id @default(cuid())
+  name              String
+  description       String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  contributionAmount Decimal
+  frequency         String           // e.g., "weekly", "monthly"
+  totalMembers      Int
+  currentCycle      Int              @default(1)
+  isActive          Boolean          @default(true)
+  privateKey        String           // For message encryption
+  publicKey         String           // For message encryption
+  adminId           String
+  admin             User             @relation("GroupAdmin", fields: [adminId], references: [id])
+  members           AyuutoMember[]
+  cycles            AyuutoCycle[]
+  contributions     Contribution[]
+  messages          Message[]
+}
+
+model AyuutoMember {
+  id             String        @id @default(cuid())
+  joinedAt       DateTime      @default(now())
+  role           String        @default("member") // "admin", "member", "elder"
+  userId         String
+  user           User          @relation(fields: [userId], references: [id])
+  groupId        String
+  group          AyuutoGroup   @relation(fields: [groupId], references: [id])
+  cyclePosition  Int           // Position in rotation
+  contributions  Contribution[]
+  receivedFunds  AyuutoCycle[]
+  messages       Message[]
+  
+  @@unique([userId, groupId])
+}
+model AyuutoCycle {
+  id              String       @id @default(cuid())
+  cycleNumber     Int
+  startDate       DateTime
+  endDate         DateTime
+  status          String       // "pending", "active", "completed"
+  recipientId     String
+  recipient       AyuutoMember @relation(fields: [recipientId], references: [id])
+  groupId         String
+  group           AyuutoGroup  @relation(fields: [groupId], references: [id])
+  contributions   Contribution[]
+  
+  @@unique([cycleNumber, groupId])
+}
+
+model Contribution {
+  id              String       @id @default(cuid())
+  amount          Decimal
+  contributedAt   DateTime     @default(now())
+  status          String       // "pending", "confirmed", "verified"
+  memberId        String
+  member          AyuutoMember @relation(fields: [memberId], references: [id])
+  groupId         String
+  group           AyuutoGroup  @relation(fields: [groupId], references: [id])
+  cycleId         String
+  cycle           AyuutoCycle  @relation(fields: [cycleId], references: [id])
+  verifications   Verification[]
+}
+model Verification {
+  id              String       @id @default(cuid())
+  verifiedAt      DateTime     @default(now())
+  verifierId      String
+  verifier        User         @relation(fields: [verifierId], references: [id])
+  contributionId  String
+  contribution    Contribution @relation(fields: [contributionId], references: [id])
+  method          String       // "digital", "in-person", "elder"
+  notes           String?
+}
+
+model Message {
+  id              String       @id @default(cuid())
+  content         String
+  encryptedContent String?     // Encrypted version for sensitive info
+  sentAt          DateTime     @default(now())
+  senderId        String
+  sender          AyuutoMember @relation(fields: [senderId], references: [id])
+  groupId         String
+  group           AyuutoGroup  @relation(fields: [groupId], references: [id])
+  isAnnouncement  Boolean      @default(false)
+  type            String       @default("text") // "text", "voice", "notification"
+  attachmentUrl   String?
+  readBy          MessageRead[]
+}
+
+model MessageRead {
+  id              String       @id @default(cuid())
+  messageId       String
+  message         Message      @relation(fields: [messageId], references: [id])
+  readAt          DateTime     @default(now())
+  userId          String
+  user            User         @relation(fields: [userId], references: [id])
+  
+  @@unique([messageId, userId])
+}
+
+// Update User model
+model User {
+  id              String       @id @default(cuid())
+  name            String?
+  email           String       @unique
+  password        String
+  phone           String?      @unique
+  preferredLanguage String     @default("english")
+  verificationMethod String     @default("email") // "email", "phone", "both"
+  twoFactorEnabled Boolean     @default(false)
+  twoFactorSecret String?
+  isVerified      Boolean      @default(false)
+  posts           Post[]
+  adminGroups     AyuutoGroup[] @relation("GroupAdmin")
+  memberOf        AyuutoMember[]
+  verifications   Verification[]
+  messagesRead    MessageRead[]
 }
